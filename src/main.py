@@ -1,45 +1,23 @@
+from datetime import datetime
+
 from fastapi import FastAPI
+from fastapi.responses import HTMLResponse
+
+from pydantic import BaseModel
+
+from items.routers import router as item_router
+from users.routers import router as user_router
 
 app = FastAPI()
-
-items = [
-    {"id": 1, "name": "i-phone 16", "price": 100},
-    {"id": 2, "name": "Galaxy 25", "price": 200},
-    {"id": 3, "name": "Huawei", "price": 50},
-]
+app.include_router(item_router)
+app.include_router(user_router)
 
 
-# 전체 상품 목록 조회 API
-# Query Parameter: 127.0.0.1:8000/items?min_price=100
-@app.get("/items")
-def items_handler(
-    min_price: int | None = None,
-    max_price: int | None = None,
-):
-    result = items
-    if min_price:  # min_price = 100
-        # 가격이 min_price 이상인 상품
-        new_result = []
-        for item in result:
-            if item["price"] >= min_price:
-                new_result.append(item)
-        result = new_result
+class NowResponse(BaseModel):
+    now: datetime
 
-    if max_price:
-        # 가격이 max_price 이하인 상품
-        result = [item for item in result if item["price"] <= max_price]
 
-    return {"items": result}
-
-# 특정 상품 반환 API
-@app.get("/items/{item_id}")
-def item_handler(
-    item_id: int,  # path 변수
-    max_price: int | None = None,  # query param
-):
-    result = None
-    for item in items:
-        if item["id"] == item_id:
-            result = item
-            print(f"max_price: {max_price}")
-    return {"item": result}
+@app.get("/now", response_model=NowResponse)
+def get_now_handler():
+    # return {"now": datetime.now()}
+    return NowResponse(now=datetime.now())
