@@ -1,20 +1,24 @@
 import os
 import shutil
 import uuid
-from datetime import date
 
-from fastapi import APIRouter, UploadFile, status
+from fastapi import APIRouter, UploadFile, Depends, status
 from fastapi.responses import FileResponse
+from fastapi.security.http import HTTPBasic, HTTPBasicCredentials
 
-from users.exceptions import UserNotFoundException, UserProfileImgNotFoundException
+from users.authentication import create_access_token
+from users.exceptions import UserNotFoundException, UserProfileImgNotFoundException, UserIncorrectPasswordException
+from users.password import hash_password, check_password
 from users.request import UserCreateRequestBody, UserUpdateRequestBody
-from users.response import UserResponse, UserListResponse
+from users.response import UserResponse, UserListResponse, UserMeResponse, JWTResponse
+
+basic_auth = HTTPBasic()
 
 router = APIRouter(tags=["Users"])
 
 users = [
-    {"id": 1, "name": "Elon Musk", "date_of_birth": date(1970, 1, 1), "image": "03ffd118-248f-46c9-a6df-3e90dd01c649_pizza.jpeg"},
-    {"id": 2, "name": "Melon Musk", "date_of_birth": date(2000, 1, 1)},
+    {"id": 1, "username": "elon", "password": "$2b$12$5bOZcnA0C6Q/o2vQMs3.1eDCnoa9.G0X0JDYal7Y6kQh1700VKAG6"},
+    {"id": 2, "username": "melon", "password": "$2b$12$ZkMKkONFhNytTkOK3M9r..I5mugNncSTf0ZwJlWWo3D7pLBHhEdcm"},
 ]
 
 # R: 전체 유저 목록 조회 API
@@ -31,18 +35,49 @@ def get_users_handler():
 @router.post(
     "/users",
     status_code=status.HTTP_201_CREATED,
-    response_model=UserResponse,
+    response_model=UserMeResponse,
 )
 def create_user_handler(body: UserCreateRequestBody):
     new_user = {
         "id": len(users) + 1,
-        "name": body.name,
-        "date_of_birth": body.date_of_birth,
+        "username": body.username,
+        "password": hash_password(plain_text=body.password),
     }
     users.append(new_user)
-    return UserResponse.model_validate(new_user)
+    return UserMeResponse.model_validate(new_user)
 
-# R: 상세 유저 조회 API
+
+# R: 로그인 API
+@router.get(
+    "/users/login",
+    status_code=status.HTTP_200_OK,
+)
+def user_login_handler(credentials: HTTPBasicCredentials = Depends(basic_auth)):
+    # Basic Auth 이용해서 Header로 Credentials -> 비밀번호 확인 -> access_token(JWT) 발급
+    for user in users:
+        if credentials.username == user["username"]:
+            if check_password(plain_text=credentials.password, hashed_password=user["password"]):
+                return JWTResponse(access_token=create_access_token(user_id=user["id"]))
+            raise UserIncorrectPasswordException
+    raise UserNotFoundException
+
+
+# R: 내 정보 조회 API
+@router.get(
+    "/users/me",
+    status_code=status.HTTP_200_OK,
+    response_model=UserMeResponse,
+)
+def get_me_handler(credentials: HTTPBasicCredentials = Depends(basic_auth)):
+    for user in users:
+        if credentials.username == user["username"]:
+            if check_password(plain_text=credentials.password, hashed_password=user["password"]):
+                return UserMeResponse.model_validate(user)
+            raise UserIncorrectPasswordException
+    raise UserNotFoundException
+
+
+# R: 유저 상세 조회 API
 @router.get(
     "/users/{user_id}",
     status_code=status.HTTP_200_OK,
@@ -53,6 +88,7 @@ def get_user_handler(user_id: int):
         if user["id"] == user_id:
             return UserResponse.model_validate(user)
     raise UserNotFoundException
+
 
 # U: 유저 업데이트 API
 @router.patch(

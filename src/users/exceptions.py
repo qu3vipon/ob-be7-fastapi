@@ -9,3 +9,13 @@ UserProfileImgNotFoundException = HTTPException(
     status_code=status.HTTP_404_NOT_FOUND,
     detail="User profile image not found"
 )
+
+UserIncorrectPasswordException = HTTPException(
+    status_code=status.HTTP_401_UNAUTHORIZED,
+    detail="Incorrect username or password",
+)
+
+JWTExpiredException = HTTPException(
+    status_code=status.HTTP_401_UNAUTHORIZED,
+    detail="JWT expired",
+)

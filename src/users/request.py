@@ -1,18 +1,9 @@
-from datetime import date
-
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel
 
 
 class UserCreateRequestBody(BaseModel):
-    name: str
-    date_of_birth: date
-
-    @field_validator("date_of_birth")
-    def validate_date_of_birth(cls, v):
-        age = date.today() - v
-        if age.days < 5 * 365:
-            raise ValueError("만 6세 이상만 가입할 수 있습니다.")
-        return v
+    username: str
+    password: str
 
 
 class UserUpdateRequestBody(BaseModel):
