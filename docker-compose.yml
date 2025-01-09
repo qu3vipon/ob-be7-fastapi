@@ -1,0 +1,15 @@
+services:
+  db:
+    container_name: be7-fastapi-mysql
+    image: mysql:8.0
+    restart: always
+    volumes:
+     - local_db:/var/lib/mysql
+    environment:
+     MYSQL_DATABASE: be7-fastapi
+     MYSQL_ROOT_PASSWORD: be7-fastapi-pw
+    ports:
+    - "33060:3306"
+
+volumes:
+  local_db:

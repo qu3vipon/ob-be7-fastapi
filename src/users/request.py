@@ -7,4 +7,4 @@ class UserCreateRequestBody(BaseModel):
 
 
 class UserUpdateRequestBody(BaseModel):
-    name: str
+    username: str

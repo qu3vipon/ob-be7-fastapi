@@ -15,6 +15,11 @@ UserIncorrectPasswordException = HTTPException(
     detail="Incorrect username or password",
 )
 
+InvalidJWTException = HTTPException(
+    status_code=status.HTTP_401_UNAUTHORIZED,
+    detail="Invalid JWT",
+)
+
 JWTExpiredException = HTTPException(
     status_code=status.HTTP_401_UNAUTHORIZED,
     detail="JWT expired",

@@ -2,12 +2,17 @@ import os
 import shutil
 import uuid
 
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
 from fastapi import APIRouter, UploadFile, Depends, status
 from fastapi.responses import FileResponse
 from fastapi.security.http import HTTPBasic, HTTPBasicCredentials
 
-from users.authentication import create_access_token
+from config.database.connection import SessionFactory, get_db
+from users.authentication import create_access_token, authenticate
 from users.exceptions import UserNotFoundException, UserProfileImgNotFoundException, UserIncorrectPasswordException
+from users.models import User
 from users.password import hash_password, check_password
 from users.request import UserCreateRequestBody, UserUpdateRequestBody
 from users.response import UserResponse, UserListResponse, UserMeResponse, JWTResponse
@@ -27,7 +32,12 @@ users = [
     status_code=status.HTTP_200_OK,
     response_model=UserListResponse,
 )
-def get_users_handler():
+def get_users_handler(
+    _: int = Depends(authenticate),
+    db: Session = Depends(get_db),
+):
+    users_query = db.execute(select(User))
+    users = users_query.scalars().all()
     return UserListResponse.model_validate({"users": users})
 
 
@@ -37,13 +47,13 @@ def get_users_handler():
     status_code=status.HTTP_201_CREATED,
     response_model=UserMeResponse,
 )
-def create_user_handler(body: UserCreateRequestBody):
-    new_user = {
-        "id": len(users) + 1,
-        "username": body.username,
-        "password": hash_password(plain_text=body.password),
-    }
-    users.append(new_user)
+def create_user_handler(
+    body: UserCreateRequestBody,
+    db: Session = Depends(get_db),
+):
+    new_user = User(username=body.username, password=hash_password(plain_text=body.password))
+    db.add(new_user)
+    db.commit()
     return UserMeResponse.model_validate(new_user)
 
 
@@ -68,12 +78,10 @@ def user_login_handler(credentials: HTTPBasicCredentials = Depends(basic_auth)):
     status_code=status.HTTP_200_OK,
     response_model=UserMeResponse,
 )
-def get_me_handler(credentials: HTTPBasicCredentials = Depends(basic_auth)):
+def get_me_handler(user_id: int = Depends(authenticate)):
     for user in users:
-        if credentials.username == user["username"]:
-            if check_password(plain_text=credentials.password, hashed_password=user["password"]):
-                return UserMeResponse.model_validate(user)
-            raise UserIncorrectPasswordException
+        if user_id == user["id"]:
+            return UserMeResponse.model_validate(user)
     raise UserNotFoundException
 
 
@@ -92,25 +100,31 @@ def get_user_handler(user_id: int):
 
 # U: 유저 업데이트 API
 @router.patch(
-    "/users/{user_id}",
+    "/users/me",
     status_code=status.HTTP_200_OK,
     response_model=UserResponse,
 )
-def update_user_handler(user_id: int, body: UserUpdateRequestBody):
+def update_user_handler(
+    body: UserUpdateRequestBody,
+    user_id: int = Depends(authenticate),
+):
     for user in users:
         if user["id"] == user_id:
-            user["name"] = body.name
+            user["username"] = body.username
             return UserResponse.model_validate(user)
     raise UserNotFoundException
 
 
 # C: 사용자 프로필 이미지 업로드 API
 @router.post(
-    "/users/{user_id}/images",
+    "/users/me/images",
     status_code=status.HTTP_201_CREATED,
     response_model=UserResponse,
 )
-def update_profile_image_handler(user_id: int, profile_image: UploadFile):
+def update_profile_image_handler(
+    profile_image: UploadFile,
+    user_id: int = Depends(authenticate),
+):
     for user in users:
         if user["id"] == user_id:
             unique_filename = f"{uuid.uuid4()}_{profile_image.filename}"
@@ -124,11 +138,11 @@ def update_profile_image_handler(user_id: int, profile_image: UploadFile):
 
 # R: 이미지 다운로드 API
 @router.get(
-    "/users/{user_id}/images/download",
+    "/users/me/images/download",
     status_code=status.HTTP_200_OK,
     response_model=None,
 )
-def download_profile_image_handler(user_id: int):
+def download_profile_image_handler(user_id: int = Depends(authenticate)):
     for user in users:
         if user["id"] == user_id:
             if image := user.get("image"):
@@ -143,11 +157,11 @@ def download_profile_image_handler(user_id: int):
 
 # D: 유저 삭제 API
 @router.delete(
-    "/users/{user_id}",
+    "/users/me",
     status_code=status.HTTP_204_NO_CONTENT,
     response_model=None,
 )
-def delete_user_handler(user_id: int):
+def delete_user_handler(user_id: int = Depends(authenticate)):
     for user in users:
         if user["id"] == user_id:
             users.remove(user)

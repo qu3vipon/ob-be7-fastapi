@@ -2,9 +2,9 @@ import bcrypt
 
 
 def hash_password(plain_text: str) -> str:
-    plain_text_bytes: bytes = plain_text.encode('utf-8')
-    hashed_password_bytes: bytes = bcrypt.hashpw(plain_text_bytes, bcrypt.gensalt())
-    return hashed_password_bytes.decode('utf-8')
+    b_plain_text: bytes = plain_text.encode('utf-8')
+    b_hashed_password: bytes = bcrypt.hashpw(b_plain_text, bcrypt.gensalt())
+    return b_hashed_password.decode('utf-8')
 
 def check_password(plain_text: str, hashed_password: str) -> bool:
     return bcrypt.checkpw(
