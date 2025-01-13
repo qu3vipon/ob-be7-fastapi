@@ -24,3 +24,8 @@ JWTExpiredException = HTTPException(
     status_code=status.HTTP_401_UNAUTHORIZED,
     detail="JWT expired",
 )
+
+DuplicateUsernameException = HTTPException(
+    status_code=status.HTTP_409_CONFLICT,
+    detail="Username already exists",
+)

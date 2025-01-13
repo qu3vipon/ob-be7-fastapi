@@ -1,3 +1,5 @@
+from sqlite3 import IntegrityError
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from fastapi import Depends
@@ -27,5 +29,7 @@ class UserRepository:
         return result.scalars().first()
 
     def delete(self, user: User) -> None:
+        user.remove_profile_image()
+
         self.db.delete(user)
         self.db.commit()

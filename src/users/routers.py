@@ -1,13 +1,12 @@
-import os
-import shutil
-import uuid
-
-from fastapi import APIRouter, UploadFile, Depends, status, Body
+from fastapi import APIRouter, UploadFile, Depends, status, Body, File
 from fastapi.responses import FileResponse
 from fastapi.security.http import HTTPBasic, HTTPBasicCredentials
 
+from sqlalchemy.exc import IntegrityError
+
 from users.authentication import create_access_token, authenticate
-from users.exceptions import UserNotFoundException, UserProfileImgNotFoundException, UserIncorrectPasswordException
+from users.exceptions import UserNotFoundException, UserProfileImgNotFoundException, UserIncorrectPasswordException, \
+    DuplicateUsernameException
 from users.models import User
 from users.password import hash_password, check_password
 from users.repository import UserRepository
@@ -42,8 +41,14 @@ def create_user_handler(
     body: UserCreateRequestBody,
     user_repo: UserRepository = Depends(),
 ):
+    if user_repo.get_user_by_username(username=body.username):
+        raise DuplicateUsernameException
+
     new_user = User.create(username=body.username, password=hash_password(plain_text=body.password))
-    user_repo.save(user=new_user)
+    try:
+        user_repo.save(user=new_user)
+    except IntegrityError:
+        raise DuplicateUsernameException
     return UserMeResponse.model_validate(new_user)
 
 
@@ -112,44 +117,42 @@ def update_user_handler(
 
 
 # C: 사용자 프로필 이미지 업로드 API
-# @router.post(
-#     "/users/me/images",
-#     status_code=status.HTTP_201_CREATED,
-#     response_model=UserResponse,
-# )
-# def upload_profile_image_handler(
-#     profile_image: UploadFile,
-#     user_id: int = Depends(authenticate),
-# ):
-#     for user in users:
-#         if user["id"] == user_id:
-#             unique_filename = f"{uuid.uuid4()}_{profile_image.filename}"
-#             file_path = os.path.join("users/images", unique_filename)
-#             with open(file_path, "wb") as f:
-#                 shutil.copyfileobj(profile_image.file, f)
-#
-#             user["image"] = unique_filename
-#             return UserResponse.model_validate(user)
-#     raise UserNotFoundException
+@router.post(
+    "/users/me/images",
+    status_code=status.HTTP_201_CREATED,
+    response_model=UserMeResponse,
+)
+def upload_profile_image_handler(
+    user_id: int = Depends(authenticate),
+    profile_image: UploadFile = File(),
+    user_repo: UserRepository = Depends(),
+):
+    if not (user := user_repo.get_user_by_id(user_id=user_id)):
+        raise UserNotFoundException
+
+    user.upload_profile_image(profile_image=profile_image)
+    user_repo.save(user=user)
+    return UserMeResponse.model_validate(user)
+
 
 # R: 이미지 다운로드 API
-# @router.get(
-#     "/users/me/images/download",
-#     status_code=status.HTTP_200_OK,
-#     response_model=None,
-# )
-# def download_profile_image_handler(user_id: int = Depends(authenticate)):
-#     for user in users:
-#         if user["id"] == user_id:
-#             if image := user.get("image"):
-#                 file_path = os.path.join("users/images", image)
-#                 original_filename = "".join(file_path.split("_")[1:])
-#                 return FileResponse(
-#                     file_path,
-#                     headers={"Content-Disposition": f"attachment; filename={original_filename}"},
-#                 )
-#             raise UserProfileImgNotFoundException
-#     raise UserNotFoundException
+@router.get(
+    "/users/{user_id}/images",
+    status_code=status.HTTP_200_OK,
+    response_model=None,
+)
+def download_profile_image_handler(
+    user_id: int,
+    _: int = Depends(authenticate),
+    user_repo: UserRepository = Depends(),
+):
+    if not (user := user_repo.get_user_by_id(user_id=user_id)):
+        raise UserNotFoundException
+    if not user.profile_image:
+        raise UserProfileImgNotFoundException
+    return FileResponse(user.profile_image)
+
+
 
 # D: 유저 삭제 API
 @router.delete(
